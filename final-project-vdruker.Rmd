@@ -1,0 +1,53 @@
+---
+title: "Statistical Process Control in Healthcare"
+subtitle: "Final Project - Masters of Arts - Biostatistics"
+author: "Vitaly Druker"
+date: "Spring 2018"
+output: bookdown::pdf_document2
+bibliography: ["bibliography.bib"]
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(dplyr)
+library(pander)
+library(tidyr)
+library(qcc)
+```
+
+# Introduction
+
+## General Statistical Control 
+
+Statistical process control has been used in the manufacturing industries since the 1920s. They were popularised by Walter A. Shewhart at Bell Labs [@shewhart-1931]. Statisical process control (SPC) attempts to answer a relatively simple question: is a process changing over time?
+
+Specifically, SPC defines two types of variation: common cause (called chance by Shewhart) and special cause (assignable) variation. Common cause variation can be viewed as process variation that is predictable, stable and (sometimes) unavoidable. This is variation that can be see as being inherent to the process itself. For example, a dart player will not hit a bullseye every time. The dart play can lower their variation, but it's unlikely that it will become entirely absent.
+
+On the other hand, special cause variation is variation in either the measurement itself or variation in the variance of the measurement that is outside. This is the variation that SPC tries to identify because it needs to be investigated as a possible issue in a process that was thought to be stable before. In continuing with the dart player example from before, there may be cause for concern if the player begins to consistently miss to left of the bulls eye. The dart player may be fatigued and needs to retire before hitting one of their friends. On the other hand, a dart player may have had a high variance in hitting the bullseye and has started to cluster more towards the center of the bulls eye. Perhaps a fellow player demonstrated the correct way to hold a dart and the dart players percision improved. This could also be noted as special cause variation. Special cause variation does not need to imply a negative outcome - simply that there is a _change_ in the process that may be attributed to an event.
+
+The reader may begin to formulate some of the balances that need to be struck in these analyses:
+
+When do we decide that the difference in accuracy is consistently significantly different than before? It can be helpful to imagine an extreme situation. The first dart thrown by the player hits the center of the board. The next hits the wall. Was the second throw 'out of control'? It'd be hard to make that decision. However, if 100/1000 first throws are bullseyes and the next 200 are not, the problem becomes more difficult.
+
+## Expansion of the Methodology 
+
+An additional problem becomes apparent when the field of application is considered. Shewhart developed his theory to be used in a manufacturing setting where measurements could be done fairly cheaply, repeatedly and in a relatively controlled setting. As more industries were able to set up repeatable measurements with advances in technology, SPC has been applied to software engineering [@UpgradeAppraisalRequirements2006], financial services [@BinJumah2012] and food control [@DORA2013607]. The strong adoption of SPC by Six Sigma methodology has not hindered this growth (@sixsigma).
+
+Another field that has not been immune to influence of SPC is healthcare [@lunderberg2007]. Statistical process control can be applied to everything from patient waiting times to clinical outcomes. However, simple classical SPC is ill equiped to deal with the wide variablity of the healthcare field (and some of the other fields mentioned above [@Raczynski]). Healthcare data can also suffer from missingness, measurement error and issues in consistent collection. All of these concept lead to wide variablity and unsatisfying results.
+
+## Report Contents
+
+This report will begin with an in-depth review of statistical process control methodology, specifically as it applies to healthcare data. Some drawbacks in the methods will be exposed using simulated data. Finally, two differnt versions of SPC beyond the classical charts will be explored.
+
+\newpage
+# Classic Statistical Process Control
+
+\newpage
+# Bibliography
+
+
+
+
