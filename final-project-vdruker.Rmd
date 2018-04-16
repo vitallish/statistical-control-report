@@ -40,10 +40,48 @@ Another field that has not been immune to influence of SPC is healthcare [@lunde
 
 ## Report Contents
 
-This report will begin with an in-depth review of statistical process control methodology, specifically as it applies to healthcare data. Some drawbacks in the methods will be exposed using simulated data. Finally, two differnt versions of SPC beyond the classical charts will be explored.
+This report will begin with an in-depth review of statistical process control methodology, specifically as it applies to healthcare data. Some drawbacks in the methods will be exposed using simulated data. Finally, two different versions of SPC beyond the classical charts will be explored.
+
 
 \newpage
+
 # Classic Statistical Process Control
+
+## Overview 
+The main process for statistical control involves a two stage process:
+1. Estimate parameters that describe the 'center' and 'spread' of the process being measured.
+2. Apply these parameters to observed data to detect any change.
+
+The recommended method for this is to estimate the paramaters from an initial stage (Phase I) and then apply them to new data (Phase 2). This process is analgaous to the 'test/train' methodology found in machine learning. It's still possible to estimate these parameters from the same data that is being evaluated, as will be shown below.
+
+As the analyst works through the quality control charting process a number of decisions need to be made. In this instance we can assume that the central/spread parameters will be estimated from the data and not predefined.
+
+1. How will the data be grouped (e.g. ill the analysis be grouped be weeks or by months)?
+2. How will estimates of central tendancy and spread be calculated. This is often explicitly tied to the assumed distribution of the process.
+
+
+## Tools Used
+
+The \code{qcc}[@R-qcc] is used to perform all statistical charting control in this section.
+
+
+## Continous Measurment Analysis 
+
+The analyst needs to make a number of decisions 
+
+```{r}
+
+
+
+
+
+
+```
+
+
+
+
+
 
 \newpage
 # Bibliography
