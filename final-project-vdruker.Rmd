@@ -16,6 +16,7 @@ library(dplyr)
 library(pander)
 library(tidyr)
 library(qcc)
+library(lubridate)
 ```
 
 # Introduction
@@ -45,6 +46,193 @@ This report will begin with an in-depth review of statistical process control me
 
 \newpage
 
+# Data Simulation 
+
+## Knobs 
+
+1. Link Function
+    - Logit
+    - Identity
+    - ln
+2. Autocorrelation Degree
+3. Cyclical Comonents
+    3.1 Amplitude
+    3.2 Frequency 
+4. Change 
+    - How long until Change starts?
+    - Magnitude of Change?
+    - Length of Change?
+    - Change Function (Linear vs. Quadratic)
+
+## Tests
+
+- Run Length (RL) (Average and SD)
+- False Positive Rate
+
+
+```{r}
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+
+```
+
+```{r}
+d_cov_names <- readr::read_lines('ref_data/sick.names.txt', skip = 9)
+d_cov_names <- c(gsub(":.+", "", d_cov_names), "diagnosis")
+
+library(readr)
+
+center_func <-function(x){
+  UseMethod("center_func")
+}
+center_func.numeric <- function(x){
+  mean(x, na.rm = TRUE)
+}
+
+center_func.character <- function(x){
+
+  names(sort(table(x), decreasing = TRUE)[1])
+  
+}
+
+center_func.logical <- function(x){
+
+  names(sort(table(x), decreasing = TRUE)[1])
+  
+}
+
+d_cov <- read_csv('ref_data/sick.data.txt',
+                         col_names = d_cov_names,
+                         col_types = list(age = col_integer(),
+                                          TSH = col_double(),
+                                          T3  = col_double(),
+                                          TT4 = col_double(),
+                                          T4U = col_double(),
+                                          FTI = col_double(),
+                                          TBG = col_character())) %>% 
+  janitor::clean_names() %>% 
+  select(-contains('measured'), -tbg, -diagnosis) %>% 
+  mutate_at(vars(on_thyroxine:psych),
+    funs(case_when(
+      . == "t" ~ TRUE,
+      . == "f" ~ FALSE
+    ))) %>% 
+  mutate(sex = if_else(sex == "?", NA_character_, sex)) %>% 
+  mutate_if(is.numeric, 
+            funs(ifelse(. >= quantile(., probs = .01, na.rm = T) & 
+                          . <= quantile(., probs = .99, na.rm = T),
+                .,
+                NA))) %>% 
+  mutate_all(funs(ifelse(is.na(.), center_func(.), .))) %>% 
+  mutate_at(vars(referral_source, sex), as.factor)
+
+```
+
+
+
+```{r}
+start_date <- ymd('2016-01-01')
+end_date <- ymd('2017-12-31')
+date_range <- seq(start_date, end_date, by = 1) 
+
+total_dates <- length(date_range)
+data_sparcity <- 0.1
+
+dates_to_sample <- sample(size = round(data_sparcity * total_dates), 
+                          x = date_range, 
+                          replace = FALSE)
+
+observations_per_day <- 5
+
+total_observations <- round(data_sparcity * total_dates * observations_per_day)
+final_dates <- sample(x = dates_to_sample, 
+                      size = total_observations, 
+                      replace = TRUE)
+
+d <- d_cov %>% 
+  sample_n(total_observations, 
+           replace = TRUE) %>% 
+  mutate(dt = final_dates) %>% 
+  select(dt, everything())
+
+process_start <- max(.1, min(.9, .4))
+process_change <- min(1-process_start, .2)
+process_end_change <- process_start + process_change
+process_dates <- quantile(as.numeric(d$dt), 
+                                   c(process_start, process_end_change))
+
+d <- d %>% 
+  mutate(dt_int = as.numeric(dt)) %>% 
+  mutate(dt_week = week(dt)) %>% 
+  mutate(in_process = between(dt_int, process_dates[1], process_dates[2]))
+  
+
+# process start
+process_start <- c(-3, 0, 3)
+process_start <- 0
+
+process_length <- process_dates[2]-process_dates[1]
+
+change_magnitude <- c(0, .1, 1, 10)
+change_magnitude <- 1
+
+# Process Change Functions 
+d <- d %>% 
+  mutate(baseline = process_start,
+         linear = case_when(
+           dt_int < process_dates[1] ~ baseline,
+           in_process ~ baseline + change_magnitude*(dt_int - process_dates[1])/process_length,
+           dt > process_dates[2] ~ baseline + change_magnitude
+         ),
+         quadratic = 
+           case_when(
+           dt_int < process_dates[1] ~ baseline,
+           in_process ~ baseline - (dt_int-process_dates[1])*(dt_int-process_dates[2])/(process_length^2) * change_magnitude,
+           dt_int > process_dates[2] ~ baseline
+         ))
+
+
+# create normal dataset
+
+sd_perc <- c(.1, .5, 1)
+sd_perc <- .1
+d_norm <- d %>% 
+  mutate_at(vars(linear, quadratic), funs(rnorm(n = length(.), mean = ., sd = change_magnitude*sd_perc))) 
+
+ggplot(d_norm, aes(x = dt, y = linear)) + geom_point()
+
+# create binomial dataset
+d_bin <- d %>% 
+  mutate_at(vars(linear, quadratic), boot::inv.logit) %>% 
+  mutate_at(vars(linear, quadratic), funs(rbinom(n = length(.), size =1, prob = .))) 
+
+```
+
+
+
+```{r}
+# Apply QCC
+library(magrittr)
+qcc_groups <- d_bin %>% 
+  group_by(dt_week) %>% 
+  summarise(total = n(),
+            linear = sum(linear),
+            quadratic = sum(quadratic)) %$% 
+  qcc(data = quadratic[1:22], sizes = total[1:22], 
+      type = "p", 
+      newdata = quadratic[23:44], 
+      newsizes  = total[23:44])
+
+
+
+```
+
+
+
+
+\newpage
+
 # Classic Statistical Process Control
 
 ## Overview 
@@ -57,26 +245,21 @@ The recommended method for this is to estimate the paramaters from an initial st
 As the analyst works through the quality control charting process a number of decisions need to be made. In this instance we can assume that the central/spread parameters will be estimated from the data and not predefined.
 
 1. How will the data be grouped (e.g. ill the analysis be grouped be weeks or by months)?
-2. How will estimates of central tendancy and spread be calculated. This is often explicitly tied to the assumed distribution of the process.
-
+2. How will estimates of central tendancy and spread be calculated. This is often tied to the distribution assumed for the process.
+3. What are the rules that indicate a process is 'out of control'. This can be seen as finding the balance between type I and type II error.
 
 ## Tools Used
 
 The \code{qcc}[@R-qcc] is used to perform all statistical charting control in this section.
 
-
 ## Continous Measurment Analysis 
 
-The analyst needs to make a number of decisions 
+We begin by simulating data for patient wait times
 
 ```{r}
 
-
-
-
-
-
 ```
+
 
 
 
