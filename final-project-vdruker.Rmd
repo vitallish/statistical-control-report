@@ -12,11 +12,34 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r, include = FALSE}
+# Data Cleaning/Manipulation
 library(dplyr)
-library(pander)
 library(tidyr)
+library(magrittr)
+library(broom)
+
+# Statistical Calculations
 library(qcc)
+
+# Data Presentation
+library(ggplot2)
+library(pander)
+
+# Other Utilities
 library(lubridate)
+library(fs)
+
+files_to_src <- dir_ls(path ='src_files', type = "file", glob = "*.R")
+purrr::walk(files_to_src, source)
+
+ggplot2::theme_set(
+  theme_minimal() %+replace%
+    theme(
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.ticks = element_line(colour = "grey20")
+    )
+)
 ```
 
 # Introduction
@@ -54,177 +77,199 @@ This report will begin with an in-depth review of statistical process control me
     - Logit
     - Identity
     - ln
-2. Autocorrelation Degree
-3. Cyclical Comonents
-    3.1 Amplitude
-    3.2 Frequency 
-4. Change 
+
+2. Change 
     - How long until Change starts?
     - Magnitude of Change?
     - Length of Change?
     - Change Function (Linear vs. Quadratic)
 
+
 ## Tests
 
-- Run Length (RL) (Average and SD)
+- Detection Rate
+- Run Length (RL) (Median and 50% quantile)
 - False Positive Rate
 
 
-```{r}
-library(lubridate)
-library(dplyr)
-library(ggplot2)
-
-```
 
 ```{r}
-d_cov_names <- readr::read_lines('ref_data/sick.names.txt', skip = 9)
-d_cov_names <- c(gsub(":.+", "", d_cov_names), "diagnosis")
-
-library(readr)
-
-center_func <-function(x){
-  UseMethod("center_func")
-}
-center_func.numeric <- function(x){
-  mean(x, na.rm = TRUE)
-}
-
-center_func.character <- function(x){
-
-  names(sort(table(x), decreasing = TRUE)[1])
+generateData <- function(data_sparcity = 0.1,
+                         observations_per_day = 5,
+                         process_start = .4,
+                         process_change = .2,
+                         stat_start  = 0, # c(-3,0,3)
+                         stat_change = 1, #  c(0, .1, 1, 10)
+                         stat_change_type = "linear", # c("linear", "quadratic")
+                         data_type  = "measurement", #c("measurement", "rate", "count"),
+                         sd_perc = 0.1,  #c(.1, .5, 1),
+                         covariates,
+                         seed_num = NA) {
+  if (!is.na(seed_num))
+    set.seed(seed_num)
   
-}
-
-center_func.logical <- function(x){
-
-  names(sort(table(x), decreasing = TRUE)[1])
   
-}
-
-d_cov <- read_csv('ref_data/sick.data.txt',
-                         col_names = d_cov_names,
-                         col_types = list(age = col_integer(),
-                                          TSH = col_double(),
-                                          T3  = col_double(),
-                                          TT4 = col_double(),
-                                          T4U = col_double(),
-                                          FTI = col_double(),
-                                          TBG = col_character())) %>% 
-  janitor::clean_names() %>% 
-  select(-contains('measured'), -tbg, -diagnosis) %>% 
-  mutate_at(vars(on_thyroxine:psych),
-    funs(case_when(
-      . == "t" ~ TRUE,
-      . == "f" ~ FALSE
-    ))) %>% 
-  mutate(sex = if_else(sex == "?", NA_character_, sex)) %>% 
-  mutate_if(is.numeric, 
-            funs(ifelse(. >= quantile(., probs = .01, na.rm = T) & 
-                          . <= quantile(., probs = .99, na.rm = T),
-                .,
-                NA))) %>% 
-  mutate_all(funs(ifelse(is.na(.), center_func(.), .))) %>% 
-  mutate_at(vars(referral_source, sex), as.factor)
-
-```
-
-
-
-```{r}
-start_date <- ymd('2016-01-01')
-end_date <- ymd('2017-12-31')
-date_range <- seq(start_date, end_date, by = 1) 
-
-total_dates <- length(date_range)
-data_sparcity <- 0.1
-
-dates_to_sample <- sample(size = round(data_sparcity * total_dates), 
+  # global options
+  start_date <- ymd('2016-01-01')
+  end_date <- ymd('2017-12-31')
+  date_range <- seq(start_date, end_date, by = 1) 
+  total_dates <- length(date_range)
+  
+  dates_to_sample <- sample(size = round(data_sparcity * total_dates), 
                           x = date_range, 
                           replace = FALSE)
-
-observations_per_day <- 5
-
-total_observations <- round(data_sparcity * total_dates * observations_per_day)
-final_dates <- sample(x = dates_to_sample, 
-                      size = total_observations, 
-                      replace = TRUE)
-
-d <- d_cov %>% 
-  sample_n(total_observations, 
-           replace = TRUE) %>% 
-  mutate(dt = final_dates) %>% 
-  select(dt, everything())
-
-process_start <- max(.1, min(.9, .4))
-process_change <- min(1-process_start, .2)
-process_end_change <- process_start + process_change
-process_dates <- quantile(as.numeric(d$dt), 
-                                   c(process_start, process_end_change))
-
-d <- d %>% 
-  mutate(dt_int = as.numeric(dt)) %>% 
-  mutate(dt_week = week(dt)) %>% 
-  mutate(in_process = between(dt_int, process_dates[1], process_dates[2]))
   
+  total_observations <- round(data_sparcity * total_dates * observations_per_day)
+  final_dates <- sample(x = dates_to_sample, 
+                        size = total_observations, 
+                        replace = TRUE)
+  
+  if(!missingArg(covariates)){
+    d <- covariates %>%
+      sample_n(total_observations,
+      replace = TRUE) %>%
+      mutate(dt = final_dates) %>%
+      select(dt, everything())
+  }else{
+    d <- data.frame(dt = final_dates)
+  }
+  
+  # Change process definition
+  if(!between(process_start, .1, .9)) stop("Please provide valid process_start")
+  if(!between(process_change, 0, 1-process_start)) stop("Please provide valid process_change")
+  
+  process_end_change <- process_start + process_change
+  process_dates <- quantile(as.numeric(date_range),
+                            c(process_start, process_end_change))
+  
+  process_length <- process_dates[2]-process_dates[1]
+  
+  
+  d <- d %>% 
+    mutate(dt_int = as.numeric(dt)) %>% 
+    mutate(dt_week = floor_date(dt, unit = "week")) %>% 
+    mutate(in_process = between(dt_int, process_dates[1], process_dates[2])) %>% 
+    mutate(baseline = stat_start)
+  
+  
+  # Process Change Functions 
+  if (stat_change_type == "linear") {
+    d <- d %>%
+      mutate(
+        true_stat = case_when(
+          dt_int < process_dates[1] ~ baseline,
+          in_process ~ baseline + stat_change * (dt_int - process_dates[1]) /
+            process_length,
+          dt > process_dates[2] ~ baseline + stat_change
+        )
+      )
+  } else if (stat_change_type == "quadratic") {
+    d <- d %>%
+      mutate(
+        true_stat =
+          case_when(
+            dt_int < process_dates[1] ~ baseline,
+            in_process ~ baseline - (dt_int - process_dates[1]) * (dt_int -
+                                                                     process_dates[2]) / (process_length ^ 2) * stat_change,
+            dt_int > process_dates[2] ~ baseline
+          )
+      )
+    
+    
+  }
+  
+  # Apply Link Functions and Create Data
+  if(data_type == "measurement"){
+    d <- d %>% 
+      mutate(data_samp = rnorm(n = nrow(.), mean = true_stat, sd = stat_change*sd_perc))
+  }else if(data_type == "rate"){
+    d <- d %>% 
+      mutate(true_stat = boot::inv.logit(true_stat),
+             data_samp = rbinom(n = nrow(.), size = 1, prob = true_stat))
+  }
+  
+  d <- d %>% 
+    arrange(dt)
+  
+  attr(d, "data_type") <- data_type
+  attr(d, "stat_change_type") <- stat_change_type
+  
+  d
+  
+}
 
-# process start
-process_start <- c(-3, 0, 3)
-process_start <- 0
-
-process_length <- process_dates[2]-process_dates[1]
-
-change_magnitude <- c(0, .1, 1, 10)
-change_magnitude <- 1
-
-# Process Change Functions 
-d <- d %>% 
-  mutate(baseline = process_start,
-         linear = case_when(
-           dt_int < process_dates[1] ~ baseline,
-           in_process ~ baseline + change_magnitude*(dt_int - process_dates[1])/process_length,
-           dt > process_dates[2] ~ baseline + change_magnitude
-         ),
-         quadratic = 
-           case_when(
-           dt_int < process_dates[1] ~ baseline,
-           in_process ~ baseline - (dt_int-process_dates[1])*(dt_int-process_dates[2])/(process_length^2) * change_magnitude,
-           dt_int > process_dates[2] ~ baseline
-         ))
+# load("ref_data/sick_data.Rdata")
+```
 
 
-# create normal dataset
+```{r}
+createQCC <- function(d, cutoff = NULL){
+  data_type <- attr(d, "data_type")
+  type <- case_when(
+    data_type == "rate" ~ "p",
+    data_type == "measurement" ~ "xbar"
+  )
+  
+  if(is.null(cutoff)){
+    out <- qcc.formula(data_samp ~ dt_week, data = d, type = type)
+  }else{
+    out <- qcc.formula(data_samp ~ dt_week, data = d, cutoff = cutoff, type = type)
+  }
+  
+  out
+}
 
-sd_perc <- c(.1, .5, 1)
-sd_perc <- .1
-d_norm <- d %>% 
-  mutate_at(vars(linear, quadratic), funs(rnorm(n = length(.), mean = ., sd = change_magnitude*sd_perc))) 
+evalQCC  <- function(d, qcc_obj, invalid_runs = c("Violating Run", "Beyond Limits")){
+  true_stats <- d %>% 
+    group_by(dt_week) %>% 
+    summarise(true_stat = mean(true_stat),
+              in_process = any(in_process)) %>% 
+    mutate(diff_stat = true_stat != first(true_stat))
+  
+  
+  calc_df <-  augment.qcc(qcc_obj, gr_func = as.Date) %>% 
+    rename(dt_week = group) %>% 
+    mutate(dt_week = dt_week + days(1)) %>% 
+    left_join(true_stats, by = "dt_week") 
+  
+  
+  emp_process_start <- calc_df %>% 
+    filter(diff_stat) %>% 
+    top_n(-1, dt_week) %>% 
+    pull(dt_week)
+  
+  first_detect <- calc_df %>% 
+    filter(diff_stat, violations %in% invalid_runs) %>% 
+    top_n(-1, dt_week) %>% 
+    pull(dt_week)
+  
+  arl <- ifelse(length(first_detect) == 1, as.numeric(first_detect - emp_process_start, unit = "days"), Inf)
 
-ggplot(d_norm, aes(x = dt, y = linear)) + geom_point()
-
-# create binomial dataset
-d_bin <- d %>% 
-  mutate_at(vars(linear, quadratic), boot::inv.logit) %>% 
-  mutate_at(vars(linear, quadratic), funs(rbinom(n = length(.), size =1, prob = .))) 
+  calc_df %>% 
+    summarise(
+      false_positive = any(!diff_stat & violations %in% invalid_runs),
+      true_positive = any(diff_stat & violations %in% invalid_runs),
+      arl = arl
+    )
+}
 
 ```
 
 
-
 ```{r}
-# Apply QCC
-library(magrittr)
-qcc_groups <- d_bin %>% 
-  group_by(dt_week) %>% 
-  summarise(total = n(),
-            linear = sum(linear),
-            quadratic = sum(quadratic)) %$% 
-  qcc(data = quadratic[1:22], sizes = total[1:22], 
-      type = "p", 
-      newdata = quadratic[23:44], 
-      newsizes  = total[23:44])
 
+param_grid <- expand.grid(
+  
+  
+  
+  stringsAsFactors = FALSE
+)
 
+d <- generateData(data_type = "rate")
+qcc_obj <- createQCC(d)
+
+# plot(qcc_obj)
+evalQCC(d, qcc_obj)
 
 ```
 
@@ -263,7 +308,14 @@ We begin by simulating data for patient wait times
 
 
 
+# Next Steps
 
+Other "Knobs"
+
+1. Autocorrelation Degree
+2. Cyclical Comonents
+    3.1 Amplitude
+    3.2 Frequency 
 
 
 \newpage
