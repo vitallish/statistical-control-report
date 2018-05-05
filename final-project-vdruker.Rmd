@@ -103,6 +103,7 @@ generateData <- function(data_sparcity = 0.1,
                          stat_change = 1, #  c(0, .1, 1, 10)
                          stat_change_type = "linear", # c("linear", "quadratic")
                          data_type  = "measurement", #c("measurement", "rate", "count"),
+                         date_floor = "quarter",
                          sd_perc = 0.1,  #c(.1, .5, 1),
                          covariates,
                          seed_num = NA, 
@@ -149,7 +150,7 @@ generateData <- function(data_sparcity = 0.1,
   
   d <- d %>% 
     mutate(dt_int = as.numeric(dt)) %>% 
-    mutate(dt_week = floor_date(dt, unit = "week")) %>% 
+    mutate(dt_group = floor_date(dt, unit = date_floor)) %>% 
     mutate(in_process = between(dt_int, process_dates[1], process_dates[2])) %>% 
     mutate(baseline = stat_start)
   
@@ -213,38 +214,43 @@ createQCC <- function(d, cutoff = NULL){
   )
   
   if(is.null(cutoff)){
-    out <- qcc.formula(data_samp ~ dt_week, data = d, type = type)
+    out <- try(qcc.formula(data_samp ~ dt_group, data = d, type = type), silent = T)
   }else{
-    out <- qcc.formula(data_samp ~ dt_week, data = d, cutoff = cutoff, type = type)
+    out <- try(qcc.formula(data_samp ~ dt_group, data = d, cutoff = cutoff, type = type), silent = T)
   }
+  
+  if(inherits(out, "try-error")) out <- NA
   
   out
 }
 
 evalQCC  <- function(d, qcc_obj, 
                      invalid_runs = c("Violating Run", "Beyond Limits"), ...){
+  if(is.na(qcc_obj)[[1]]) return(data.frame(false_positive = NA,
+                                            true_positive = NA,
+                                            arl = NA))
   true_stats <- d %>% 
-    group_by(dt_week) %>% 
+    group_by(dt_group) %>% 
     summarise(true_stat = mean(true_stat),
               in_process = any(in_process)) %>% 
     mutate(diff_stat = true_stat != first(true_stat))
   
   
   calc_df <-  augment.qcc(qcc_obj, gr_func = as.Date) %>% 
-    rename(dt_week = group) %>% 
-    mutate(dt_week = dt_week + days(1)) %>% 
-    left_join(true_stats, by = "dt_week") 
+    rename(dt_group = group) %>% 
+    mutate(dt_group = dt_group + days(1)) %>% 
+    left_join(true_stats, by = "dt_group") 
   
   
   emp_process_start <- calc_df %>% 
     filter(diff_stat) %>% 
-    top_n(-1, dt_week) %>% 
-    pull(dt_week)
+    top_n(-1, dt_group) %>% 
+    pull(dt_group)
   
   first_detect <- calc_df %>% 
     filter(diff_stat, violations %in% invalid_runs) %>% 
-    top_n(-1, dt_week) %>% 
-    pull(dt_week)
+    top_n(-1, dt_group) %>% 
+    pull(dt_group)
   
   arl <- ifelse(length(first_detect) == 1, 
                 as.numeric(first_detect - emp_process_start, unit = "days"), Inf)
@@ -272,7 +278,8 @@ param_grid <- expand.grid(
   stat_change = c(0, .1, 1, 10),
   sd_perc = c(NA, .1, .3, .8),
   stat_change_type = c("linear", "quadratic"),
-  data_type  =c("measurement", "rate", "count"),
+  data_type  =c("measurement", "rate"),#, "count"),
+  date_floor = c("week","month", "quarter"),
   stringsAsFactors = FALSE
 ) %>% 
   as_tibble()
@@ -288,36 +295,19 @@ param_grid <- param_grid %>%
 ```{r}
 
 set.seed(2)
-param_grid %>% 
-  sample_n(3) %>% 
+temp <- param_grid %>% 
+  sample_n(100) %>% 
   mutate(data = pmap(., generateData)) %>% 
-  mutate(qcc_obj = map(data, createQCC)) %>% 
+  mutate(booted_data = map(data, bootstrap, m = 5))
+  mutate(qcc_obj = map(data, ~createQCC(.x))) %>% 
   mutate(qcc_eval = map2(data, qcc_obj, ~evalQCC(.x, .y))) %>% 
   select(-data, -qcc_obj) %>% 
-  unnest() %>% 
-  glimpse()
-#   
-#   View()
-# 
-# d <- generateData(data_type = "rate")
-# 
-# qcc_obj <- createQCC(d)
-# 
-# # plot(qcc_obj)
-# evalQCC(d, qcc_obj)
+  unnest()
 
-```
+temp %>% 
+  ggplot(aes(x = stat_change, y = arl)) + geom_point() + facet_wrap(~data_type)
 
-```{r}
-set.seed(2)
-param_grid %>%
-sample_n(3) %>%
-mutate(data = pmap(., generateData)) %>%
-mutate(qcc_obj = map(data, createQCC)) %>%
-mutate(qcc_eval = map2(data, qcc_obj, ~evalQCC(.x, .y))) %>%
-select(-data, -qcc_obj)
-
-
+# class(temp$qcc_obj[[1]])
 ```
 
 
