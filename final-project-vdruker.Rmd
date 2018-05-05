@@ -28,6 +28,7 @@ library(pander)
 # Other Utilities
 library(lubridate)
 library(fs)
+library(purrr)
 
 files_to_src <- dir_ls(path ='src_files', type = "file", glob = "*.R")
 purrr::walk(files_to_src, source)
@@ -104,7 +105,8 @@ generateData <- function(data_sparcity = 0.1,
                          data_type  = "measurement", #c("measurement", "rate", "count"),
                          sd_perc = 0.1,  #c(.1, .5, 1),
                          covariates,
-                         seed_num = NA) {
+                         seed_num = NA, 
+                         ...) {
   if (!is.na(seed_num))
     set.seed(seed_num)
   
@@ -219,7 +221,8 @@ createQCC <- function(d, cutoff = NULL){
   out
 }
 
-evalQCC  <- function(d, qcc_obj, invalid_runs = c("Violating Run", "Beyond Limits")){
+evalQCC  <- function(d, qcc_obj, 
+                     invalid_runs = c("Violating Run", "Beyond Limits"), ...){
   true_stats <- d %>% 
     group_by(dt_week) %>% 
     summarise(true_stat = mean(true_stat),
@@ -243,7 +246,8 @@ evalQCC  <- function(d, qcc_obj, invalid_runs = c("Violating Run", "Beyond Limit
     top_n(-1, dt_week) %>% 
     pull(dt_week)
   
-  arl <- ifelse(length(first_detect) == 1, as.numeric(first_detect - emp_process_start, unit = "days"), Inf)
+  arl <- ifelse(length(first_detect) == 1, 
+                as.numeric(first_detect - emp_process_start, unit = "days"), Inf)
 
   calc_df %>% 
     summarise(
@@ -258,21 +262,63 @@ evalQCC  <- function(d, qcc_obj, invalid_runs = c("Violating Run", "Beyond Limit
 
 ```{r}
 
+
 param_grid <- expand.grid(
-  
-  
-  
+  data_sparcity = c(.1, .5, .8),
+  observations_per_day = c(1, 5, 10),
+  process_start = c(.2, .4, .8),
+  process_change = c(.1, .3, .5),
+  stat_start  = c(-3,0,3),
+  stat_change = c(0, .1, 1, 10),
+  sd_perc = c(NA, .1, .3, .8),
+  stat_change_type = c("linear", "quadratic"),
+  data_type  =c("measurement", "rate", "count"),
   stringsAsFactors = FALSE
-)
+) %>% 
+  as_tibble()
 
-d <- generateData(data_type = "rate")
-qcc_obj <- createQCC(d)
+param_grid <- param_grid %>% 
+  filter(process_change + process_start < .9) %>% 
+  filter((data_type == "measurement" & !is.na(sd_perc)) |
+           (data_type %in% c("rate", "count") & is.na(sd_perc))) 
+```
 
-# plot(qcc_obj)
-evalQCC(d, qcc_obj)
+
+
+```{r}
+
+set.seed(2)
+param_grid %>% 
+  sample_n(3) %>% 
+  mutate(data = pmap(., generateData)) %>% 
+  mutate(qcc_obj = map(data, createQCC)) %>% 
+  mutate(qcc_eval = map2(data, qcc_obj, ~evalQCC(.x, .y))) %>% 
+  select(-data, -qcc_obj) %>% 
+  unnest() %>% 
+  glimpse()
+#   
+#   View()
+# 
+# d <- generateData(data_type = "rate")
+# 
+# qcc_obj <- createQCC(d)
+# 
+# # plot(qcc_obj)
+# evalQCC(d, qcc_obj)
 
 ```
 
+```{r}
+set.seed(2)
+param_grid %>%
+sample_n(3) %>%
+mutate(data = pmap(., generateData)) %>%
+mutate(qcc_obj = map(data, createQCC)) %>%
+mutate(qcc_eval = map2(data, qcc_obj, ~evalQCC(.x, .y))) %>%
+select(-data, -qcc_obj)
+
+
+```
 
 
 
