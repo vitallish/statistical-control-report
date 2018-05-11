@@ -229,6 +229,8 @@ evalQCC  <- function(d, qcc_obj,
   if(is.na(qcc_obj)[[1]]) return(data.frame(false_positive = NA,
                                             true_positive = NA,
                                             arl = NA))
+  
+  # d <- as.data.frame(d)
   true_stats <- d %>% 
     group_by(dt_group) %>% 
     summarise(true_stat = mean(true_stat),
@@ -294,21 +296,93 @@ param_grid <- param_grid %>%
 
 ```{r}
 
-set.seed(2)
-temp <- param_grid %>% 
-  sample_n(100) %>% 
-  mutate(data = pmap(., generateData)) %>% 
-  mutate(booted_data = map(data, bootstrap, m = 5))
-  mutate(qcc_obj = map(data, ~createQCC(.x))) %>% 
-  mutate(qcc_eval = map2(data, qcc_obj, ~evalQCC(.x, .y))) %>% 
-  select(-data, -qcc_obj) %>% 
+library(future)
+plan(multiprocess)
+
+evalAllQcc <- function(p_grid) {
+  p_grid %>%
+    mutate(data = pmap(., generateData)) %>%
+    mutate(qcc_obj = map(data, ~ createQCC(.x))) %>%
+    mutate(qcc_eval = map2(data, qcc_obj, ~ evalQCC(.x, .y))) %>%
+    select(-data, -qcc_obj) %>%
+    unnest(qcc_eval)
+}
+
+
+
+current_run <- as.numeric(now())
+set.seed(current_run)
+all_data <- param_grid %>% 
+  # sample_n(16) %>% 
+  mutate(partition = rep_len(1:4, nrow(.))) %>% 
+  group_by(partition) %>% 
+  nest(.key = "p_grid") %>% 
+  mutate(full_eval = map(p_grid, function(x){future({evalAllQcc(x)})})) %>% 
+  mutate(full_eval_out = map(full_eval, value)) %>% 
+  select(full_eval_out) %>% 
   unnest()
 
-temp %>% 
-  ggplot(aes(x = stat_change, y = arl)) + geom_point() + facet_wrap(~data_type)
+all_data <- all_data %>% 
+  mutate(fitted = !is.na(false_positive)) 
 
-# class(temp$qcc_obj[[1]])
+
+
+
+save(all_data, file = paste0("sim_data/", current_run*100000,".Rdata" ))
+
+
+
+all_data %>% 
+  group_by(data_sparcity, observations_per_day, process_start, 
+           process_change, stat_start, stat_change, sd_perc,
+           stat_change_type, data_type, date_floor) %>% 
+  summarise(fpr = mean(false_positive, na.rm = TRUE),
+            tpr = mean(true_positive, na.rm = TRUE),
+            med_arl = median(arl, na.rm = TRUE),
+            fit_rate = mean(!is.na(false_positive))) %>% 
+  ggplot(aes(fpr, tpr)) + geom_point(position = "jitter") 
+
+library(caret)
 ```
+
+```{r}
+tree_mod <- train(as.factor(fitted) ~ data_sparcity *observations_per_day + process_start + 
+           process_change + stat_start + stat_change + 
+           stat_change_type + data_type + date_floor, data = all_data, method = "rpart")
+
+rpart.plot::rpart.plot(tree_mod$finalModel, left = FALSE, xflip = TRUE)
+```
+
+
+```{r}
+tree_mod_fp %<-% {train(as.factor(false_positive) ~ data_sparcity *observations_per_day + process_start + 
+           process_change + stat_start + stat_change + 
+           stat_change_type + data_type + date_floor, data = all_data, method = "rpart",
+           na.action = na.omit)}
+
+rpart.plot::rpart.plot(tree_mod_fp$finalModel)
+```
+
+
+```{r}
+tree_mod_tp %<-% {train(as.factor(true_positive) ~ data_sparcity*observations_per_day + process_start + 
+           process_change + stat_start + stat_change + 
+           stat_change_type + data_type + date_floor, data = all_data, method = "rpart",
+           na.action = na.omit)}
+
+rpart.plot::rpart.plot(tree_mod_tp$finalModel)
+```
+
+
+```{r}
+tree_mod <- train(arl ~ data_sparcity*observations_per_day + process_start + 
+           process_change + stat_start + stat_change + 
+           stat_change_type + data_type + date_floor, data = filter(all_data, !is.infinite(arl)), method = "rpart",
+           na.action = na.omit)
+
+rpart.plot::rpart.plot(tree_mod$finalModel)
+```
+
 
 
 
@@ -359,4 +433,7 @@ Other "Knobs"
 
 
 
+```{r}
+
+```
 
