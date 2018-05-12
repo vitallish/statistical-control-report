@@ -308,28 +308,29 @@ evalAllQcc <- function(p_grid) {
     unnest(qcc_eval)
 }
 
+runs <- 0
 
-
-current_run <- as.numeric(now())
-set.seed(current_run)
-all_data <- param_grid %>% 
-  # sample_n(16) %>% 
-  mutate(partition = rep_len(1:4, nrow(.))) %>% 
-  group_by(partition) %>% 
-  nest(.key = "p_grid") %>% 
-  mutate(full_eval = map(p_grid, function(x){future({evalAllQcc(x)})})) %>% 
-  mutate(full_eval_out = map(full_eval, value)) %>% 
-  select(full_eval_out) %>% 
-  unnest()
-
-all_data <- all_data %>% 
-  mutate(fitted = !is.na(false_positive)) 
-
-
-
-
-save(all_data, file = paste0("sim_data/", current_run*100000,".Rdata" ))
-
+while( runs < 10){
+  current_run <- as.numeric(now())
+  set.seed(current_run)
+  all_data <- param_grid %>% 
+    # sample_n(16) %>% 
+    mutate(partition = rep_len(1:4, nrow(.))) %>% 
+    group_by(partition) %>% 
+    nest(.key = "p_grid") %>% 
+    mutate(full_eval = map(p_grid, function(x){future({evalAllQcc(x)})})) %>% 
+    mutate(full_eval_out = map(full_eval, value)) %>% 
+    select(full_eval_out) %>% 
+    unnest()
+  
+  all_data <- all_data %>% 
+    mutate(fitted = !is.na(false_positive)) 
+  
+  save(all_data, file = paste0("sim_data/", current_run*100000,".Rdata" ))
+  
+  runs <- runs + 1
+  
+}
 
 
 all_data %>% 
