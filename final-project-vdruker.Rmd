@@ -61,6 +61,7 @@ generateData <- function(data_sparcity = 0.1,
                          data_type  = "measurement", 
                          date_floor = "quarter",
                          sd_perc = 0.1, 
+                         cutoff = NA,
                          covariates,
                          seed_num = NA, 
                          ...) {
@@ -156,19 +157,21 @@ generateData <- function(data_sparcity = 0.1,
   
   attr(d, "data_type") <- data_type
   attr(d, "stat_change_type") <- stat_change_type
+  attr(d, "cutoff") <- cutoff
   
   d
   
 }
 
-createQCC <- function(d, cutoff = NULL, debug = FALSE){
+createQCC <- function(d, debug = FALSE){
   data_type <- attr(d, "data_type")
+  cutoff <- attr(d, "cutoff")
   type <- case_when(
     data_type == "rate" ~ "p",
     data_type == "measurement" ~ "xbar"
   )
   
-  if(is.null(cutoff)) {
+  if(is.na(cutoff)) {
     out <-
       try(qcc.formula(data_samp ~ dt_group, data = d, type = type), 
           silent = !debug)
@@ -197,6 +200,8 @@ evalQCC  <- function(d, qcc_obj,
       arl = NA
     ))
   }
+  
+  stat_change_type <- attr(d, "stat_change_type")
   
   true_stats <- d %>% 
     group_by(dt_group) %>% 
@@ -230,7 +235,12 @@ evalQCC  <- function(d, qcc_obj,
   calc_df %>% 
     summarise(
       false_positive = any(!diff_stat & violations %in% invalid_runs),
-      true_positive = any(diff_stat & violations %in% invalid_runs),
+      true_positive = case_when(
+        stat_change_type == "linear" ~ any(diff_stat & 
+                                             violations %in% "Violating Run"),
+        stat_change_type == "quadratic" ~ any(diff_stat & 
+                                                violations %in% "Beyond Limits")
+      ),
       arl = arl
     )
 }
@@ -540,6 +550,7 @@ param_grid <- expand.grid(
   stat_change_type = c("linear", "quadratic"),
   data_type  =c("measurement", "rate"),#, "count"),
   date_floor = c("week","month", "quarter"),
+  cutoff = c(NA, '2017-01-01'),
   stringsAsFactors = FALSE
 ) %>% 
   as_tibble()
@@ -650,15 +661,15 @@ The main data of interest is some measurement, either continous or binary, taken
 
 Data generation was done in the spirit of what was completed by [@causal-inf-comp] where different 'knobs' were defined. These knobs represent distinct features of the data and varying the values for them will create slightly different data sets.
 
-These are discussed below:
+### Knobs Controlling Data/Observation Frequency
 
-### Data Sparcity 
+#### Data Sparcity 
 
 The domain of data sparcity is: $x: (0,1)$.
 
 This parameter ranges from 0 to 1 and describes the number of days in the full range that had an observation. This parameter is used to simulate data that happens rarely, such as rare surgeries. See below in [Observations Per Day]  and Figure \@ref(fig:data-sparse-num-obs) for a longer explanation.
 
-### Observations Per Day
+#### Observations Per Day
 
 The domain of observations per day is: $x: (0,Inf)$. 
 
@@ -680,23 +691,25 @@ all_data %>%
   
 ```
 
-### Data Density (Calculated)
+#### Data Density (Calculated)
 
 The data density parameter is the result of multipliying Data Sparcity by Observations Per Day. This value will approximate the total observations / 730 days.
 
-### Process Start
+### Knobs Controlling the Underlying Change
+
+#### Process Start
 
 The domain of process start is: $x: (0,1)$.
 
 This parameter defines when a process change begins as a percentage of the observations from the beginning of the dataset. See Figure \@ref(fig:data-process-exp) for further details.
 
-### Process Change
+#### Process Change
 
 The domain of process change is: $x: (0,1 - process\_start)$.
 
 This parameter defines how long the process will change for. See Figure \@ref(fig:data-process-exp) for further details.
 
-### Stat Change Type
+#### Stat Change Type
 
 The domain of stat change type is: $x: (linear,quadratic)$. 
 
@@ -722,8 +735,9 @@ all_data %>%
   
 ```
 
+### Knobs Controlling the True Values
 
-### Data Type
+#### Data Type
 The domain of data type is: $x: (measurement,rate)$.
 
 The type of data dictates the underlying distribution of the data which informs how the simulated sample is drawn. If its value is `measurement` then individual values are drawn from the normal distribution. This requires a standard deviation as well which is defined by [SD Perc] (see below).
@@ -787,15 +801,20 @@ all_data %>%
 ```
 
 
-### Stat Start
+#### Stat Start
 
 The domain of stat start is: $x: (-Inf, Inf)$. This defines the starting/baseline value for the response variable. The definition is made prior to any transformations (such as inverse logit).
 
-### SD Perc
+#### SD Perc
 
 The domain of SD Perc is: $x: (0,1)$ and is only applicable when data_type = 'measurement'. It is necessary to define the spread of points when dealing with
 
-### Date Floor
+### Knobs Controlling CC Parameters
+
+#### Date Floor
+
+#### Cutoff
+
 
 ### Actual Parameters Used
 
