@@ -1,5 +1,5 @@
 ---
-title: "Statistical Process Control in Healthcare"
+title: "Evaluating Control Charts using Simulated Data"
 subtitle: "Final Project - Masters of Arts - Biostatistics"
 author: "Vitaly Druker"
 date: "Spring 2018"
@@ -550,7 +550,7 @@ param_grid <- expand.grid(
   stat_change_type = c("linear", "quadratic"),
   data_type  =c("measurement", "rate"),#, "count"),
   date_floor = c("week","month", "quarter"),
-  cutoff = c(NA, '2017-01-01'),
+  #cutoff = c(as.Date('2017-01-01'), as.Date(NA)),
   stringsAsFactors = FALSE
 ) %>% 
   as_tibble()
@@ -577,6 +577,7 @@ while( runs < params$new_data_sets){
   set.seed(current_run)
   
   all_data <- param_grid %>% 
+    # sample_n(16) %>% 
     mutate(partition = rep_len(1:4, nrow(.))) %>% 
     group_by(partition) %>% 
     nest(.key = "p_grid") %>% 
@@ -813,13 +814,13 @@ The domain of SD Perc is: $x: (0,1)$ and is only applicable when data_type = 'me
 
 #### Date Floor
 
-#### Cutoff
-
+The domain of Date Floor is $x:(week, month, quarter)$. It represents the grouping variables that are used in the control chart. This 'width' is analagous to a binwidth when thinking of a histogram. If `week` is selected there are ~104 groups, while if `quarter` is selected there are only 8 groups.
 
 ### Actual Parameters Used
 
-While the domains above represent the theoretical possible values for the knobs, only a few were chosen. All combinations of the parameters below were used excluding those that became invalid (i.e. those where the process_change + process_start > 0.9).
+While the domains above represent the theoretical possible values for the knobs, only a few were chosen. All combinations of the parameters below were used excluding those that became invalid (i.e. those where the process_change + process_start > 0.9). This process lead to `scales::comma(nrow(param_grid))` different combinations of the parameters to be evaluated. 
 
+See the [Parameter Grid Creation] section of the appendix for details on this process.
 
 ```{r show-param}
 param_grid %>% 
@@ -827,9 +828,33 @@ param_grid %>%
   pander()
 ```
 
+### Final Data Generation Process
+
+The final data generation process was completed by seeding and creating `scales::comma(n_distinct(all_data$strap))` sets of data and are included in the [github repositroy](https://github.com/vitallish/statistical-control-report) under the `sim_data` folder. See the [Data Generation, Model Fitting and Evaluation] section of the appendix for details.
 
 
-## Tests
+# Measuring Success
+
+The following sections discuss the main measures of success that will be used to evaluate the success of the control chart methodology. These are discussed in great detail as these could be used as measures of success to empirically evaluate other statistica control methodology.
+
+## Ability to Fit
+
+It is possible for the method developed by the `qcc` package will not complete. This method was developed directly from the standard rules of control charts. This binary outcome will help determine what parameters (whether about the data or the parameters necessary for the method) lead to a successful fit.
+
+The following measures will only be calculated on those versions of the data the successfully fit.
+
+## False Positive Rate
+
+The false positive rate is defined as either finding a trend based (6 points in a row on one side of the centerline) or an extreme value happening outside of the control limits that occured during a section where the `true_val` was not different than baseline. A low rate is desirable.
+
+This statistic is a binary value and is only calculated for the models that successfully fit.
+
+
+## Run Length 
+
+
+
+
 
 - Detection Rate
 - Run Length (RL) (Median and 50% quantile)
@@ -840,36 +865,43 @@ param_grid %>%
 
 
 
-# Results
+# Results and Discussion
+
 
 ## Ability of QCC to Fit the Data
 
+One important drawback of the control chart methodology is that there must be at least two points in a group to be able to estimate the standard deviation. Overall, the model was able to fit the data `r scales::percent(mean(all_data$fitted))` of the time. 
+The following discussion refers to Figure \@ref(fig:predictors-of-fit).
+
+The most important predictor, unsurprisingly is the density of the data. This directly influences. When the data averages about 1 or more ( >=0.9) observations/day then the model fits 99% of the time. If the data is not as dense the sampling frequency begins to play an important role. Sampling frequency refers to the width of each group which is decided by the [Date Floor] knob.
+
+
+While this is an unsatisfying result of the control chart methodology - it'd be ideal if the model was always able to fit and simply widen confidence intervals accordingly - it's an easily solved issue. The lack of fit can be addressed by removing groups with single observations (although it may result in graphs that bypass those groups). This may be a feature that could be added to the `qcc` package allowing for easier analysis.
 
 
 
+(ref:predictors-of-fit) The graph above shows a classification tree model fit using the knobs described in the [Knobs] section with the dependent variabled being `fitted` which is `TRUE` if the control chart model successfully fit. Each square in the graph represents a node. The first line shows the predictor for all data that fall into that node. The second line shows the fraction of data points that fall into the `TRUE` category in that node. The last line shows the proportion of the data that falls into that node. The writing under each node represents a decision, with the affermiative leading to the right. See [Ability of QCC to Fit the Data] for a deeper discussion on the findings of figure. Additionally, the data type becomes an important consideration as a continuous variable requires at least 2 observation while a bernoulli variable does not.
 
-```{r, include = FALSE}
-
-all_data %>% 
-  group_by(data_sparcity, observations_per_day, process_start, 
-           process_change, stat_start, stat_change, sd_perc,
-           stat_change_type, data_type, date_floor) %>% 
-  summarise(fpr = mean(false_positive, na.rm = TRUE),
-            tpr = mean(true_positive, na.rm = TRUE),
-            med_arl = median(arl, na.rm = TRUE),
-            fit_rate = mean(!is.na(false_positive))) %>% 
-  ggplot(aes(fpr, tpr)) + geom_point(position = "jitter") 
-
-
-```
-
-```{r}
+```{r predictors-of-fit, fig.cap="(ref:predictors-of-fit)"}
+set.seed(1)
 tree_mod <- rpart(as.factor(fitted) ~ data_sparcity  + observations_per_day + 
                     data_density + process_start + 
            process_change + stat_start + stat_change + 
-           stat_change_type + data_type + date_floor, data = all_data)
+           stat_change_type + data_type + date_floor , data = all_data, cp =.001)
+
+rpart.plot::rpart.plot(tree_mod, left = FALSE, xflip = TRUE,
+                       main = "Parameters that Influence the ability to create Control Charts")
+```
+
+```{r}
+tree_mod <- rpart(as.factor(true_positive) ~ data_sparcity  + observations_per_day + 
+                    data_density + process_start + 
+           process_change + stat_start + stat_change + 
+           stat_change_type + data_type + date_floor , data = all_data)
 
 rpart.plot::rpart.plot(tree_mod, left = FALSE, xflip = TRUE)
+
+
 ```
 
 
@@ -895,7 +927,6 @@ Other "Knobs"
     3.2 Frequency 
 3. Count Data Type (using Poisson Distribution)
 4. Adding covariates
-
 
 \newpage
 
@@ -923,6 +954,8 @@ Other "Knobs"
 
 ## Data Generation, Model Fitting and Evaluation
 
+Most of the important functions from below are defined above in [Main Functions Used]
+
 ```{r appendix-data, ref.label='generate-load-data', echo = TRUE, eval=FALSE}
 
 ```
@@ -931,6 +964,12 @@ Other "Knobs"
 
 ```{r appendix-qcc-func, ref.label='qcc-ops', echo = TRUE, eval=FALSE}
 
+```
+
+## Softare Information
+
+```{r appendix-r-info, echo=TRUE}
+sessionInfo()
 ```
 
 
