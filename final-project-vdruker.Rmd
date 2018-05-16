@@ -444,11 +444,15 @@ plot_gg.qcc <- function(x, add.stats = TRUE, chart.all = TRUE,
 #'
 #' # Without Cutoff
 #' qcc_obj <- qcc::qcc(diameter[1:25,], type="xbar")
-#' qcc_obj2 <- qcc.formula(diameter ~ sample, data = dplyr::filter(pistonrings, sample <= 25), type = "xbar", plot = TRUE)
+#' qcc_obj2 <- qcc.formula(diameter ~ sample, 
+#'     data = dplyr::filter(pistonrings, sample <= 25), 
+#'     type = "xbar", plot = TRUE)
 #'
 #' # With Cutoff
-#' qcc_new <-  qcc::qcc(diameter[1:25,], newdata = diameter[24:40,], type="xbar")
-#' qcc_new2 <- qcc.formula(diameter ~ sample, data = pistonrings, type = "xbar", plot = TRUE, cutoff = 25)
+#' qcc_new <-  qcc::qcc(diameter[1:25,], 
+#'     newdata = diameter[24:40,], type="xbar")
+#' qcc_new2 <- qcc.formula(diameter ~ sample, data = pistonrings, type = "xbar",
+#'     plot = TRUE, cutoff = 25)
 #'
 #' # Dates and p chart
 #' ## use POSIXct, not Date object to create date
@@ -457,12 +461,14 @@ plot_gg.qcc <- function(x, add.stats = TRUE, chart.all = TRUE,
 #' samp_dates <- seq(from = start, to = end, length.out = 15)
 #' samp_dates <- sample(samp_dates, 100, replace = TRUE)
 #' old_process <- samp_dates < '2017-01-08'
-#' vals <- ifelse(old_process,rbinom(sum(old_process), 1 , p = 0.5), rbinom(sum(!old_process), 1,  p = 0.2) )
+#' vals <- ifelse(old_process,rbinom(sum(old_process), 1 , p = 0.5), 
+#'     rbinom(sum(!old_process), 1,  p = 0.2) )
 #' d <- data.frame(samp_dates, vals)
 #'
 #' ## Run the graphs with plot = TRUE
 #' qcc.formula(vals ~ samp_dates, data = d, type = "p", plot = TRUE)
-#' qcc.formula(vals ~ samp_dates, data = d, type = "p", plot = TRUE, cutoff = '2017-01-08')
+#' qcc.formula(vals ~ samp_dates, data = d, type = "p", plot = TRUE, 
+#'     cutoff = '2017-01-08')
 qcc.formula <- function(formula, data, type, plot = FALSE, cutoff = NULL, ...){
   data <- as.data.frame(data)
   outcome_name <- formula.tools::lhs(formula)
@@ -645,6 +651,19 @@ As the analyst works through the quality control charting process a number of de
 1. How will the data be grouped (e.g. ill the analysis be grouped be weeks or by months)?
 2. How will estimates of central tendancy and spread be calculated. This is often tied to the distribution assumed for the process.
 3. What are the rules that indicate a process is 'out of control'. This can be seen as finding the balance between type I and type II error.
+
+```{r}
+all_data %>% 
+  filter(date_floor == 'quarter',
+         data_type == 'measurement',
+         data_density == 2.5,
+         stat_change == 1
+         )
+
+
+```
+
+
 
 ## Tools Used
 
@@ -845,28 +864,27 @@ The following measures will only be calculated on those versions of the data the
 
 ## False Positive Rate
 
-The false positive rate is defined as either finding a trend based (6 points in a row on one side of the centerline) or an extreme value happening outside of the control limits that occured during a section where the `true_val` was not different than baseline. A low rate is desirable.
+The false positive rate (FPR) is defined as either finding a trend based (6 points in a row on one side of the centerline) or an extreme value happening outside of the control limits that occured during a section where the `true_val` was not different than baseline. A low rate is desirable.
 
 This statistic is a binary value and is only calculated for the models that successfully fit.
 
+## True Positive Rate
 
-## Run Length 
+The true positive rate (TPR) is defined by having the model accurately predict either a trend change (6 points on either side of the centerline) in a linear change model or an extreme value during a quadratic process change. 
 
+The distinction was made because, both of these changes should be viewed seperately. Control chart theory generally attempts to identify out of control points, whether trend based or extreme value based [@R-qcc]. Nevertheless, the two types of errors are often attributed to different underlying processes. Namely, trend violations signal a trend change while individual out of control points may signal a random issue that can be 'written off'.
 
+Therefore, for this project the type of change to identify is treated as importantly as the detection of any change. 
 
+Additionally only models that successfully fit and those that had a $stat\_change \gt 0$.  
 
+<!-- ## Run Length  -->
 
-- Detection Rate
-- Run Length (RL) (Median and 50% quantile)
-- False Positive Rate
-- Fitted
+<!-- Lastly, a common measure used in evaluating the performance of control chart methodology is the measure of the run length [@4053587]. This is a measure of how quickly that the control chart is able to identify a change in process. -->
 
-
-
-
+<!-- In this analysis the median run length will be reported as all instances where a change is not detected are labeled as having an infinite run length.  -->
 
 # Results and Discussion
-
 
 ## Ability of QCC to Fit the Data
 
@@ -880,7 +898,7 @@ While this is an unsatisfying result of the control chart methodology - it'd be 
 
 
 
-(ref:predictors-of-fit) The graph above shows a classification tree model fit using the knobs described in the [Knobs] section with the dependent variabled being `fitted` which is `TRUE` if the control chart model successfully fit. Each square in the graph represents a node. The first line shows the predictor for all data that fall into that node. The second line shows the fraction of data points that fall into the `TRUE` category in that node. The last line shows the proportion of the data that falls into that node. The writing under each node represents a decision, with the affermiative leading to the right. See [Ability of QCC to Fit the Data] for a deeper discussion on the findings of figure. Additionally, the data type becomes an important consideration as a continuous variable requires at least 2 observation while a bernoulli variable does not.
+(ref:predictors-of-fit) The graph above shows a classification tree model fit using the knobs described in the [Knobs] section with the dependent variabled being `fitted` which is `TRUE` if the control chart model successfully fit. Each square in the graph represents a node. The first line shows the predictor for all data that fall into that node. The second line shows the fraction of data points that fall into the `TRUE` category in that node. The last line shows the proportion of the data that falls into that node. The writing under each node represents a decision, with the affermiative leading to the right. See [Ability of QCC to Fit the Data] for a deeper discussion on the findings of figure.
 
 ```{r predictors-of-fit, fig.cap="(ref:predictors-of-fit)"}
 set.seed(1)
@@ -893,27 +911,64 @@ rpart.plot::rpart.plot(tree_mod, left = FALSE, xflip = TRUE,
                        main = "Parameters that Influence the ability to create Control Charts")
 ```
 
-```{r}
-tree_mod <- rpart(as.factor(true_positive) ~ data_sparcity  + observations_per_day + 
+## Ability of QCC to correctly identify changes
+
+After approprietly fitting the model, it becomes very important to accurately detect any changes that may be occuring. Figure \@ref(fig:predictors-of-tp) shows the result of fitting a tree based model to the `true_positive` outcome using the parameters described earlier.
+
+The right side of the figure describes those that had quarter based groups. Therefore, there were only 8 groups analyzed. According to the model, this grouping was very ineffective in detecting linear changes or even changes in rate based data. 
+
+The left side of the figure is slightly more complicated improves the base 52% rate of accurate detection to 67%. Finally, looking at continous data appears to improve the detection rate (left most leaf.) If the data is rate based, there appears to be more fine points to the analaysis where the `stat_change` and even the `stat_start` are important in accurate detection. Unsurprisingly, small changes (`stat_change` < 0.55) do not lead to high levels of successful predictions.
+
+(ref:predictors-of-tp) Please see the explanation at \@ref(fig:predictors-of-fit) for details on how to read the graph. The graph above describes the most imporant parameters in ensuring successful detection of a process change. Only models with an actual change and with a successful fit were included in this analysis. 
+
+```{r predictors-of-tp, fig.cap="(ref:predictors-of-tp)"}
+set.seed(98794)
+
+tp_mod <- rpart(as.factor(true_positive) ~ data_sparcity  + observations_per_day + 
                     data_density + process_start + 
            process_change + stat_start + stat_change + 
-           stat_change_type + data_type + date_floor , data = all_data)
+           stat_change_type + data_type + date_floor , 
+           data = all_data,
+           subset = with(all_data, stat_change != 0 & fitted ))
 
-rpart.plot::rpart.plot(tree_mod, left = FALSE, xflip = TRUE)
-
-
+rpart.plot::rpart.plot(tp_mod, left = FALSE, xflip = TRUE,
+                       main = "Parameters that Improve the Ability of Accurate Detection")
 ```
 
 
+## Ability of QCC to minimize False Positive results
+
+As important as it is to correclty 
+
+```{r}
+set.seed(1293)
+fp_model <- rpart(as.factor(false_positive) ~ data_sparcity  + observations_per_day + 
+                    data_density + process_start + 
+           process_change + stat_start + stat_change + 
+           stat_change_type + data_type + date_floor , 
+           data = all_data, 
+           subset = all_data$fitted)
+
+rpart.plot::rpart.plot(fp_model, left = FALSE, xflip = TRUE)
+
+```
+
+## Balancing False Postives and False Negatives
+
+```{r}
+all_data %>% 
+  filter(fitted, stat_change > 0) %>% 
+  group_by(data_sparcity, observations_per_day,  data_density,
+           process_start, process_change, stat_start, 
+           stat_change, stat_change_type, data_type, date_floor ) %>% 
+  summarise(fpr = mean(false_positive),
+            tpr = mean(true_positive)) %>% 
+  ggplot(aes(x = fpr, y = tpr)) + 
+  geom_point()  + 
+  facet_grid(stat_change_type~ stat_change)
 
 
-\newpage
-
-## Continous Measurment Analysis 
-
-We begin by simulating data for patient wait times
-
-
+```
 
 
 
