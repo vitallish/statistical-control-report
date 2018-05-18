@@ -10,7 +10,9 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
 ```
 
 ```{r packages, include = FALSE}
@@ -615,25 +617,25 @@ all_data <- all_data %>%
 
 ## General Statistical Control 
 
-Statistical process control has been used in the manufacturing industries since the 1920s. They were popularised by Walter A. Shewhart at Bell Labs [@shewhart-1931]. Statisical process control (SPC) attempts to answer a relatively simple question: is a process changing over time?
+Statistical process control has been used in the manufacturing industries since the 1920s. They were popularized by Walter A. Shewhart at Bell Labs [@shewhart-1931]. Statistical process control (SPC) attempts to answer a relatively simple question: is a process changing over time?
 
-Specifically, SPC defines two types of variation: common cause (called chance by Shewhart) and special cause (assignable) variation. Common cause variation can be viewed as process variation that is predictable, stable and (sometimes) unavoidable. This is variation that can be see as being inherent to the process itself. For example, a dart player will not hit a bullseye every time. The dart play can lower their variation, but it's unlikely that it will become entirely absent.
+Specifically, SPC defines two types of variation: common cause (called chance by Shewhart) and special cause (assignable) variation. Common cause variation can be viewed as process variation that is predictable, stable and (sometimes) unavoidable. This is variation that can be see as being inherent to the process itself. For example, a dart player will not hit a bulls-eye every time. The dart play can lower their variation, but it's unlikely that it will become entirely absent.
 
-On the other hand, special cause variation is variation in either the measurement itself or variation in the variance of the measurement that is outside. This is the variation that SPC tries to identify because it needs to be investigated as a possible issue in a process that was thought to be stable before. In continuing with the dart player example from before, there may be cause for concern if the player begins to consistently miss to left of the bulls eye. The dart player may be fatigued and needs to retire before hitting one of their friends. On the other hand, a dart player may have had a high variance in hitting the bullseye and has started to cluster more towards the center of the bulls eye. Perhaps a fellow player demonstrated the correct way to hold a dart and the dart players percision improved. This could also be noted as special cause variation. Special cause variation does not need to imply a negative outcome - simply that there is a _change_ in the process that may be attributed to an event.
+On the other hand, special cause variation is variation in either the measurement itself or variation in the variance of the measurement that is outside. This is the variation that SPC tries to identify because it needs to be investigated as a possible issue in a process that was thought to be stable before. In continuing with the dart player example from before, there may be cause for concern if the player begins to consistently miss to the left of the bulls eye. The dart player may be fatigued and needs to retire before hitting one of their friends. On the other hand, a dart player may have had a high variance in hitting the bulls-eye and has started to cluster more towards the center of the bulls eye. Perhaps a fellow player demonstrated the correct way to hold a dart and the dart players precision improved. This could also be noted as special cause variation. Special cause variation does not need to imply a negative outcome - simply that there is a _change_ in the process that may be attributed to an event.
 
 The reader may begin to formulate some of the balances that need to be struck in these analyses:
 
-When do we decide that the difference in accuracy is consistently significantly different than before? It can be helpful to imagine an extreme situation. The first dart thrown by the player hits the center of the board. The next hits the wall. Was the second throw 'out of control'? It'd be hard to make that decision. However, if 100/1000 first throws are bullseyes and the next 200 are not, the problem becomes more difficult.
+When do we decide that the difference in accuracy is consistently significantly different than before? It can be helpful to imagine an extreme situation. The first dart thrown by the player hits the center of the board. The next hits the wall. Was the second throw 'out of control'? It'd be hard to make that decision. However, if 100/1000 first throws are bulls-eyes and the next 200 are not, the problem becomes more difficult.
 
 ## Expansion of the Methodology 
 
 An additional problem becomes apparent when the field of application is considered. Shewhart developed his theory to be used in a manufacturing setting where measurements could be done fairly cheaply, repeatedly and in a relatively controlled setting. As more industries were able to set up repeatable measurements with advances in technology, SPC has been applied to software engineering [@UpgradeAppraisalRequirements2006], financial services [@BinJumah2012] and food control [@DORA2013607]. The strong adoption of SPC by Six Sigma methodology has not hindered this growth (@sixsigma).
 
-Another field that has not been immune to influence of SPC is healthcare [@lunderberg2007]. Statistical process control can be applied to everything from patient waiting times to clinical outcomes. However, simple classical SPC is ill equiped to deal with the wide variablity of the healthcare field (and some of the other fields mentioned above [@Raczynski]). Healthcare data can also suffer from missingness, measurement error and issues in consistent collection. All of these concept lead to wide variablity and unsatisfying results.
+Another field that has not been immune to influence of SPC is healthcare [@lunderberg2007]. Statistical process control can be applied to everything from patient waiting times to clinical outcomes. However, simple classical SPC is ill equipped to deal with the wide variability of the healthcare field (and some of the other fields mentioned above [@Raczynski]). Healthcare data can also suffer from missingness, measurement error and issues in consistent collection. All of these concept lead to wide variability and unsatisfying results.
 
 ## Report Contents
 
-This report will begin with an in-depth review of statistical process control methodology, specifically as it applies to healthcare data. Some drawbacks in the methods will be exposed using simulated data. Finally, two different versions of SPC beyond the classical charts will be explored.
+This report will begin with an in-depth review of statistical process control methodology, specifically as it applies to highly inconsistent data. Some drawbacks in the methods will be exposed using simulated data.
 
 \newpage
 
@@ -641,33 +643,62 @@ This report will begin with an in-depth review of statistical process control me
 
 ## Overview 
 The main process for statistical control involves a two stage process:
+
 1. Estimate parameters that describe the 'center' and 'spread' of the process being measured.
 2. Apply these parameters to observed data to detect any change.
 
-The recommended method for this is to estimate the paramaters from an initial stage (Phase I) and then apply them to new data (Phase 2). This process is analgaous to the 'test/train' methodology found in machine learning. It's still possible to estimate these parameters from the same data that is being evaluated, as will be shown below.
+The recommended method for this is to estimate the parameters from an initial stage (Phase I) and then apply them to new data (Phase 2). This process is analogous to the 'test/train' methodology found in machine learning. It's still possible to estimate these parameters from the same data that is being evaluated, as will be shown below.
+
+Figures \@ref(fig:xbar-chart-ex) and \@ref(fig:p-chart-ex) show some examples of typical control charts. Figure \@ref(fig:xbar-chart-ex) shows a typical x-bar chart which assumes a normal distribution for the measurements made. Figure \@ref(fig:p-chart-ex) shows an example of a p-chart (or proportion chart) which tracks a binary variable over time. See the figure captions for details.
 
 As the analyst works through the quality control charting process a number of decisions need to be made. In this instance we can assume that the central/spread parameters will be estimated from the data and not predefined.
 
-1. How will the data be grouped (e.g. ill the analysis be grouped be weeks or by months)?
-2. How will estimates of central tendancy and spread be calculated. This is often tied to the distribution assumed for the process.
+1. How will the data be grouped (e.g. will the analysis be grouped be weeks or by months)?
+2. How will estimates of central tenancy and spread be calculated. This is often tied to the distribution assumed for the process.
 3. What are the rules that indicate a process is 'out of control'. This can be seen as finding the balance between type I and type II error.
 
-```{r}
+(ref:xbar-chart-ex) The chart above shows a typical x-bar control chart. It's clear that there is a process change in this example. Note that points outside of the limits are labeled as 'Beyond Limits' while the points that are greater than 6 points on one side of the center line are labeled as 'Violating Runs'.
+
+```{r xbar-chart-ex, fig.cap = "(ref:xbar-chart-ex)"}
+set.seed(112423)
 all_data %>% 
-  filter(date_floor == 'quarter',
+  filter(date_floor == 'month',
          data_type == 'measurement',
+         data_density == .8,
+         stat_change == 1,
+         sd_perc == .8) %>% 
+  sample_n(1) %>% 
+  mutate(data = pmap(., generateData)) %>%
+      mutate(qcc_obj = map(data, ~ createQCC(.x))) %>% 
+  mutate(walk(qcc_obj, ~plot(plot_gg.qcc(.x, gr_func = as.Date)))) %>% 
+  invisible()
+```
+
+(ref:p-chart-ex) The graph above shows a typical p chart. Note that this figure (unlike figure \@ref(fig:xbar-chart-ex)) does not contain any points that are 'Beyond Limits'. Nevertheless there is a clear trend upward which is captured by the 'Violating Run'.
+
+```{r p-chart-ex, fig.cap = "(ref:p-chart-ex)"}
+set.seed(11263)
+
+all_data %>% 
+  filter(date_floor == 'month',
+         data_type == 'rate',
          data_density == 2.5,
-         stat_change == 1
-         )
+         stat_change == 1,
+         stat_start == -3
+         ) %>% 
+  sample_n(1) %>% 
+  mutate(data = pmap(., generateData)) %>%
+      mutate(qcc_obj = map(data, ~ createQCC(.x))) %>% 
+  mutate(walk(qcc_obj, ~plot(plot_gg.qcc(.x, gr_func = as.Date)))) %>% 
+  invisible()
 
 
 ```
 
 
-
 ## Tools Used
 
-The `qcc` package [@R-qcc] is used to perform all statistical charting control in this section.
+The `qcc` package [@R-qcc] is used to perform all statistical charting control in this section. Additionally, see [Software Information] in the [Appendix] for information about the other tools used. Lastly, the full code for this project can be found on [github](https://github.com/vitallish/statistical-control-report).
 
 \newpage
 
@@ -675,7 +706,7 @@ The `qcc` package [@R-qcc] is used to perform all statistical charting control i
 
 ## Overall Data Properties
 
-The main data of interest is some measurement, either continous or binary, taken at a specific point in time. The range of time is taken as January 1, 2016 - December 31, 2017. The data generating process first picked specific dates (with replacement and according to the parameters listed below) and then assigned those dates the random measurements.
+The main data of interest is some measurement, either continuous or binary, taken at a specific point in time. The range of time is taken as January 1, 2016 - December 31, 2017. The data generating process first picked specific dates (with replacement and according to the parameters listed below) and then assigned those dates the random measurements.
 
 ## Knobs 
 
@@ -683,9 +714,9 @@ Data generation was done in the spirit of what was completed by [@causal-inf-com
 
 ### Knobs Controlling Data/Observation Frequency
 
-#### Data Sparcity 
+#### Data Sparsity 
 
-The domain of data sparcity is: $x: (0,1)$.
+The domain of data sparsity is: $x: (0,1)$.
 
 This parameter ranges from 0 to 1 and describes the number of days in the full range that had an observation. This parameter is used to simulate data that happens rarely, such as rare surgeries. See below in [Observations Per Day]  and Figure \@ref(fig:data-sparse-num-obs) for a longer explanation.
 
@@ -693,9 +724,9 @@ This parameter ranges from 0 to 1 and describes the number of days in the full r
 
 The domain of observations per day is: $x: (0,Inf)$. 
 
-This describes a slightly different data property from [Data Sparcity] in that the days for observation are previously chosen and then a random number (averaging the parameter) is assigned to each of those days. Figure \@ref(fig:data-sparse-num-obs) displays these two parameters a they very. See the caption for a deeper look.
+This describes a slightly different data property from [Data Sparsity] in that the days for observation are previously chosen and then a random number (averaging the parameter) is assigned to each of those days. Figure \@ref(fig:data-sparse-num-obs) displays these two parameters a they very. See the caption for a deeper look.
 
-(ref:data-sparse-num-obs) The figure above shows a histograph of observations taken across the two parameters described in [Observations Per Day] and [Data Sparcity]. It's important to note the difference between having sparce data with many observations (upper right) and dense data with few observations with few observations (lower left). The data looks different but it has very similar [Data Density](Data Density (Calculated)) values suggesting a similar number of observations.
+(ref:data-sparse-num-obs) The figure above shows a histogram of observations taken across the two parameters described in [Observations Per Day] and [Data Sparsity]. It's important to note the difference between having sparse data with many observations (upper right) and dense data with few observations with few observations (lower left). The data looks different but it has very similar [Data Density](Data Density (Calculated)) values suggesting a similar number of observations.
 
 ```{r data-sparse-num-obs, fig.cap="(ref:data-sparse-num-obs)"}
 all_data %>% 
@@ -713,7 +744,7 @@ all_data %>%
 
 #### Data Density (Calculated)
 
-The data density parameter is the result of multipliying Data Sparcity by Observations Per Day. This value will approximate the total observations / 730 days.
+The data density parameter is the result of multiplying Data Sparsity by Observations Per Day. This value will approximate the total observations / 730 days.
 
 ### Knobs Controlling the Underlying Change
 
@@ -721,7 +752,7 @@ The data density parameter is the result of multipliying Data Sparcity by Observ
 
 The domain of process start is: $x: (0,1)$.
 
-This parameter defines when a process change begins as a percentage of the observations from the beginning of the dataset. See Figure \@ref(fig:data-process-exp) for further details.
+This parameter defines when a process change begins as a percentage of the observations from the beginning of the data set. See Figure \@ref(fig:data-process-exp) for further details.
 
 #### Process Change
 
@@ -761,9 +792,9 @@ all_data %>%
 The domain of data type is: $x: (measurement,rate)$.
 
 The type of data dictates the underlying distribution of the data which informs how the simulated sample is drawn. If its value is `measurement` then individual values are drawn from the normal distribution. This requires a standard deviation as well which is defined by [SD Perc] (see below).
-Values for each observation are then drawn from the distribution $N(true\_val,stat\_change * sd\_perc$.
+Values for each observation are then drawn from the distribution .
 
-If the value is `rate` then a similar process happens but with the Bernoulli distribution. First, the current value of the response variable is transformed from $(-Inf, Inf)$ to $(0,1)$ using the inverse logit operator (from the `boot` package [R-boot]). This value then becomes the probability with which a Bernoulli trial is sampled.
+If the value is `rate` then a similar process happens but with the Bernoulli distribution. First, the current value of the response variable is transformed from $(-Inf, Inf)$ to $(0,1)$ using the inverse logit operator (from the `boot` package [@R-boot]). This value then becomes the probability with which a Bernoulli trial is sampled.
 
 See Figure \@ref(fig:data-gen-explore-meas) for details on the process in regards to normal measurements.
 
@@ -833,11 +864,11 @@ The domain of SD Perc is: $x: (0,1)$ and is only applicable when data_type = 'me
 
 #### Date Floor
 
-The domain of Date Floor is $x:(week, month, quarter)$. It represents the grouping variables that are used in the control chart. This 'width' is analagous to a binwidth when thinking of a histogram. If `week` is selected there are ~104 groups, while if `quarter` is selected there are only 8 groups.
+The domain of Date Floor is $x:(week, month, quarter)$. It represents the grouping variables that are used in the control chart. This 'width' is analogous to a bin width when thinking of a histogram. If `week` is selected there are ~104 groups, while if `quarter` is selected there are only 8 groups.
 
 ### Actual Parameters Used
 
-While the domains above represent the theoretical possible values for the knobs, only a few were chosen. All combinations of the parameters below were used excluding those that became invalid (i.e. those where the process_change + process_start > 0.9). This process lead to `scales::comma(nrow(param_grid))` different combinations of the parameters to be evaluated. 
+While the domains above represent the theoretical possible values for the knobs, only a few were chosen. All combinations of the parameters below were used excluding those that became invalid (i.e. those where the process_change + process_start > 0.9). This process lead to `r scales::comma(nrow(param_grid))` different combinations of the parameters to be evaluated. 
 
 See the [Parameter Grid Creation] section of the appendix for details on this process.
 
@@ -849,12 +880,12 @@ param_grid %>%
 
 ### Final Data Generation Process
 
-The final data generation process was completed by seeding and creating `scales::comma(n_distinct(all_data$strap))` sets of data and are included in the [github repositroy](https://github.com/vitallish/statistical-control-report) under the `sim_data` folder. See the [Data Generation, Model Fitting and Evaluation] section of the appendix for details.
+The final data generation process was completed by seeding and creating `r scales::comma(n_distinct(all_data$strap))` sets of data and are included in the [github repositroy](https://github.com/vitallish/statistical-control-report) under the `sim_data` folder. See the [Data Generation, Model Fitting and Evaluation] section of the appendix for details.
 
 
 # Measuring Success
 
-The following sections discuss the main measures of success that will be used to evaluate the success of the control chart methodology. These are discussed in great detail as these could be used as measures of success to empirically evaluate other statistica control methodology.
+The following sections discuss the main measures of success that will be used to evaluate the success of the control chart methodology. These are discussed in great detail as these could be used as measures of success to empirically evaluate other statistical control methodology.
 
 ## Ability to Fit
 
@@ -864,19 +895,19 @@ The following measures will only be calculated on those versions of the data the
 
 ## False Positive Rate
 
-The false positive rate (FPR) is defined as either finding a trend based (6 points in a row on one side of the centerline) or an extreme value happening outside of the control limits that occured during a section where the `true_val` was not different than baseline. A low rate is desirable.
+The false positive rate (FPR) is defined as either finding a trend based (6 points in a row on one side of the center line) or an extreme value happening outside of the control limits that occurred during a section where the `true_val` was not different than baseline. A low rate is desirable.
 
 This statistic is a binary value and is only calculated for the models that successfully fit.
 
 ## True Positive Rate
 
-The true positive rate (TPR) is defined by having the model accurately predict either a trend change (6 points on either side of the centerline) in a linear change model or an extreme value during a quadratic process change. 
+The true positive rate (TPR) is defined by having the model accurately predict either a trend change (6 points on either side of the center line) in a linear change model or an extreme value during a quadratic process change. 
 
-The distinction was made because, both of these changes should be viewed seperately. Control chart theory generally attempts to identify out of control points, whether trend based or extreme value based [@R-qcc]. Nevertheless, the two types of errors are often attributed to different underlying processes. Namely, trend violations signal a trend change while individual out of control points may signal a random issue that can be 'written off'.
+The distinction was made because, both of these changes should be viewed separately. Control chart theory generally attempts to identify out of control points, whether trend based or extreme value based [@R-qcc]. Nevertheless, the two types of errors are often attributed to different underlying processes. Namely, trend violations signal a trend change while individual out of control points may signal a random issue that can be 'written off'.
 
 Therefore, for this project the type of change to identify is treated as importantly as the detection of any change. 
 
-Additionally only models that successfully fit and those that had a $stat\_change \gt 0$.  
+Additionally only models that successfully fit and those that and had a non-zero process change were evaluated for the true positive statistic as those that don't have any change will not be able to detect a change by definition.
 
 <!-- ## Run Length  -->
 
@@ -893,12 +924,9 @@ The following discussion refers to Figure \@ref(fig:predictors-of-fit).
 
 The most important predictor, unsurprisingly is the density of the data. This directly influences. When the data averages about 1 or more ( >=0.9) observations/day then the model fits 99% of the time. If the data is not as dense the sampling frequency begins to play an important role. Sampling frequency refers to the width of each group which is decided by the [Date Floor] knob.
 
-
 While this is an unsatisfying result of the control chart methodology - it'd be ideal if the model was always able to fit and simply widen confidence intervals accordingly - it's an easily solved issue. The lack of fit can be addressed by removing groups with single observations (although it may result in graphs that bypass those groups). This may be a feature that could be added to the `qcc` package allowing for easier analysis.
 
-
-
-(ref:predictors-of-fit) The graph above shows a classification tree model fit using the knobs described in the [Knobs] section with the dependent variabled being `fitted` which is `TRUE` if the control chart model successfully fit. Each square in the graph represents a node. The first line shows the predictor for all data that fall into that node. The second line shows the fraction of data points that fall into the `TRUE` category in that node. The last line shows the proportion of the data that falls into that node. The writing under each node represents a decision, with the affermiative leading to the right. See [Ability of QCC to Fit the Data] for a deeper discussion on the findings of figure.
+(ref:predictors-of-fit) The graph above shows a classification tree model fit using the knobs described in the [Knobs] section with the dependent variables being `fitted` which is `TRUE` if the control chart model successfully fit. Each square in the graph represents a node. The first line shows the predictor for all data that fall into that node. The second line shows the fraction of data points that fall into the `TRUE` category in that node. The last line shows the proportion of the data that falls into that node. The writing under each node represents a decision, with the affirmative leading to the right. See [Ability of QCC to Fit the Data] for a deeper discussion on the findings of figure.
 
 ```{r predictors-of-fit, fig.cap="(ref:predictors-of-fit)"}
 set.seed(1)
@@ -913,13 +941,13 @@ rpart.plot::rpart.plot(tree_mod, left = FALSE, xflip = TRUE,
 
 ## Ability of QCC to correctly identify changes
 
-After approprietly fitting the model, it becomes very important to accurately detect any changes that may be occuring. Figure \@ref(fig:predictors-of-tp) shows the result of fitting a tree based model to the `true_positive` outcome using the parameters described earlier.
+After appropriately fitting the model, it becomes very important to accurately detect any changes that may be occurring. Figure \@ref(fig:predictors-of-tp) shows the result of fitting a tree based model to the `true_positive` outcome using the parameters described earlier.
 
 The right side of the figure describes those that had quarter based groups. Therefore, there were only 8 groups analyzed. According to the model, this grouping was very ineffective in detecting linear changes or even changes in rate based data. 
 
-The left side of the figure is slightly more complicated improves the base 52% rate of accurate detection to 67%. Finally, looking at continous data appears to improve the detection rate (left most leaf.) If the data is rate based, there appears to be more fine points to the analaysis where the `stat_change` and even the `stat_start` are important in accurate detection. Unsurprisingly, small changes (`stat_change` < 0.55) do not lead to high levels of successful predictions.
+The left side of the figure is slightly more complicated improves the base 52% rate of accurate detection to 67%. Finally, looking at continuous data appears to improve the detection rate (left most leaf.) If the data is rate based, there appears to be more fine points to the analysis where the `stat_change` and even the `stat_start` are important in accurate detection. Unsurprisingly, small changes (`stat_change` < 0.55) do not lead to high levels of successful predictions.
 
-(ref:predictors-of-tp) Please see the explanation at \@ref(fig:predictors-of-fit) for details on how to read the graph. The graph above describes the most imporant parameters in ensuring successful detection of a process change. Only models with an actual change and with a successful fit were included in this analysis. 
+(ref:predictors-of-tp) Please see the explanation at figure \@ref(fig:predictors-of-fit) for details on how to read the graph. The graph above describes the most important parameters in ensuring successful detection of a process change. Only models with an actual change and with a successful fit were included in this analysis. 
 
 ```{r predictors-of-tp, fig.cap="(ref:predictors-of-tp)"}
 set.seed(98794)
@@ -938,9 +966,15 @@ rpart.plot::rpart.plot(tp_mod, left = FALSE, xflip = TRUE,
 
 ## Ability of QCC to minimize False Positive results
 
-As important as it is to correclty 
+As important as it is to correctly identify changes, it's important to minimize the number of false positives that are detected. Please review [False Positive Rate] for details on how this was calculated.
 
-```{r}
+The results of the model that used `false_positive` as an outcome are shown in \@ref(fig:predictors-of-fp). Surprisingly, a smaller `stat_change` actually lowered the rate of a false postie. This is surprising because it seems that a large change would most likely be detected. However, the larger change may have been detected outside of the limits of the actual process change. Specifically, a large process change may have thrown the estimated central line so far from baseline that the points outside of the process change actually appeared to be in violation of the process limits. An example of this issue can be seen in Figure \@ref(fig:xbar-chart-ex).
+
+Further down the tree it's interesting to see that the parameterization of the grouping variable to the shortest bin width or the most amount of groups results in the largest rate of false positives. Additionally, it appears that measurement based has a higher rate of false positives for linear trend changes. 
+
+(ref:predictors-of-fp) Please see the explanation at figure \@ref(fig:predictors-of-fit) for details on how to read the graph. The graph above describes the most important parameters in ensuring successful detection of a process change. Only models with a successful fit were included in this analysis. 
+
+```{r predictors-of-fp, fig.cap="(ref:predictors-of-fp)"}
 set.seed(1293)
 fp_model <- rpart(as.factor(false_positive) ~ data_sparcity  + observations_per_day + 
                     data_density + process_start + 
@@ -949,39 +983,45 @@ fp_model <- rpart(as.factor(false_positive) ~ data_sparcity  + observations_per_
            data = all_data, 
            subset = all_data$fitted)
 
-rpart.plot::rpart.plot(fp_model, left = FALSE, xflip = TRUE)
+rpart.plot::rpart.plot(fp_model, left = FALSE, xflip = TRUE,
+                       main = "Parameters that raise the likelihood of a False Positive")
 
 ```
 
-## Balancing False Postives and False Negatives
+# Conclusion and Next Steps
 
-```{r}
-all_data %>% 
-  filter(fitted, stat_change > 0) %>% 
-  group_by(data_sparcity, observations_per_day,  data_density,
-           process_start, process_change, stat_start, 
-           stat_change, stat_change_type, data_type, date_floor ) %>% 
-  summarise(fpr = mean(false_positive),
-            tpr = mean(true_positive)) %>% 
-  ggplot(aes(x = fpr, y = tpr)) + 
-  geom_point()  + 
-  facet_grid(stat_change_type~ stat_change)
+## Discussion 
 
+The ability of control charts to appropriately fit are closely related to some of the simple parameters that an analyst has access to. It clearly is related to the bin width chosen by the analyst. These findings follow the general recommendations That there should be ~ 20 groups on a statistical control chart to accurately estimate changes.
 
-```
+These parameterizations are also important to minimize the false positive rate. This makes sense because the more groups lead to more independent tests which leads to a higher chance of false positives.
 
+The full analysis shows that there are some parametric decisions that are needed to be made correctly by the analyst. 
 
+## Next Steps
 
-# Next Steps
+Some possible next steps are outlined to continue exploration of this concept. 
 
-Other "Knobs"
+### Other Knobs
 
-1. Autocorrelation Degree
-2. Cyclical Comonents
-    3.1 Amplitude
-    3.2 Frequency 
+One way to expand the analysis is to create other ways to change the data. This can add more complexity to the analysis and test the robustness of any change method.
+
+1. Auto-correlation Degree
+    - Add some degree of auto-correlation to the measurements. Control chart methodology needs to assume that all points are independent. Auto-correlation would break this assumption and may change the ability of this method to appropriately identify change.
+2. Cyclical Components
+    - It's possible to add some cyclical components which may be present in seasonal data. 
 3. Count Data Type (using Poisson Distribution)
+    - Control chart methodology also allows for analyzing count data. This can be an additional data type included.
 4. Adding covariates
+    - It would be interesting to add some covariates which can be used to test the reason for trend changes.
+
+### Additional Methods
+
+Besides control charts, there are many other methods that may be employed to detect changes and may be more adept at dealing with some of the new details listed in the 'Knobs' section.
+
+For example, it's possible to use forecasting (such as with the [`forcast` package](https://cran.r-project.org/package=forecast)) to try to predict points and then detect issues. This package can deal with built in trends automatically. Additionally, it's possible to use more non-parametric methods such as structural change detection ([`strucchange` package](https://cran.r-project.org/package=strucchange)) which does not rely on any parametric assumptions.
+
+The hope is that the framework developed in this paper may be easily expanded to include other methods. The metrics used can be applied to any change detection method and evaluated for the accuracy and robustness.
 
 \newpage
 
@@ -1021,12 +1061,11 @@ Most of the important functions from below are defined above in [Main Functions 
 
 ```
 
-## Softare Information
+## Software Information
 
 ```{r appendix-r-info, echo=TRUE}
 sessionInfo()
 ```
-
 
 
 \newpage
